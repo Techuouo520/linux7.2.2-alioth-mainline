@@ -17,10 +17,10 @@ set(KERNEL_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/kernel")
 file(MAKE_DIRECTORY "${KERNEL_BUILD_DIR}")
 
 add_custom_target(kernel ALL
-    COMMAND "${MAKE_EXECUTABLE}" --no-silent -C "${KERNEL_SOURCE_DIR}" O=${KERNEL_BUILD_DIR} LLVM=1 ARCH=arm64 alioth_defconfig
+    COMMAND "${MAKE_EXECUTABLE}" --no-silent -C "${KERNEL_SOURCE_DIR}" O=${KERNEL_BUILD_DIR} LLVM=1 ARCH=arm64 LOCALVERSION= alioth_defconfig
     COMMAND "${KERNEL_SOURCE_DIR}/scripts/config" --file "${KERNEL_BUILD_DIR}/.config" --disable EFI_ZBOOT
-    COMMAND "${MAKE_EXECUTABLE}" --no-silent -C "${KERNEL_SOURCE_DIR}" O=${KERNEL_BUILD_DIR} LLVM=1 ARCH=arm64 olddefconfig
-    COMMAND "${MAKE_EXECUTABLE}" --no-silent -C "${KERNEL_SOURCE_DIR}" O=${KERNEL_BUILD_DIR} LLVM=1 ARCH=arm64 -j${BUILD_JOBS} Image modules dtbs
+    COMMAND "${MAKE_EXECUTABLE}" --no-silent -C "${KERNEL_SOURCE_DIR}" O=${KERNEL_BUILD_DIR} LLVM=1 ARCH=arm64 LOCALVERSION= olddefconfig
+    COMMAND "${MAKE_EXECUTABLE}" --no-silent -C "${KERNEL_SOURCE_DIR}" O=${KERNEL_BUILD_DIR} LLVM=1 ARCH=arm64 LOCALVERSION= -j${BUILD_JOBS} Image modules dtbs
     BYPRODUCTS
         "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image"
         "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8250-xiaomi-alioth.dtb"
