@@ -1040,6 +1040,10 @@
 	};
 };
 
+&pon {
+	mode-bootloader = <0x2>;
+};
+
 &pon_pwrkey {
 	status = "okay";
 };
