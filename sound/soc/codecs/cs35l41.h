@@ -14,12 +14,16 @@
 #include <linux/regulator/consumer.h>
 #include <linux/firmware.h>
 #include <sound/core.h>
+#include <sound/cs-amp-lib.h>
 #include <sound/cs35l41.h>
 
 #include "wm_adsp.h"
 
 #define CS35L41_RX_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE)
 #define CS35L41_TX_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE)
+
+#define CS35L41_CAL_ALG_ID		0xcd
+#define CS35L41_CAL_STATUS_OK		1
 
 extern const struct dev_pm_ops cs35l41_pm_ops;
 
@@ -33,6 +37,9 @@ struct cs35l41_private {
 	int irq;
 	/* GPIO for /RST */
 	struct gpio_desc *reset_gpio;
+	/* Speaker calibration restored from userspace, applied on DSP run */
+	struct cirrus_amp_cal_data cal_data;
+	bool cal_data_valid;
 };
 
 int cs35l41_probe(struct cs35l41_private *cs35l41, const struct cs35l41_hw_cfg *hw_cfg);

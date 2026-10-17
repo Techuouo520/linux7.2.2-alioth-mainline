@@ -182,6 +182,109 @@ static SOC_ENUM_SINGLE_DECL(pcm_sft_ramp,
 			    CS35L41_AMP_DIG_VOL_CTRL, 0,
 			    cs35l41_pcm_sftramp_text);
 
+static const char * const cs35l41_cal_ctl_names[] = {
+	"CAL_AMBIENT", "CAL_R", "CAL_STATUS", "CAL_CHECKSUM",
+};
+
+/* Volatile CSPL calibration controls are written to DSP memory directly */
+static int cs35l41_write_cal_data(struct cs35l41_private *cs35l41)
+{
+	const struct cirrus_amp_cal_data *cal = &cs35l41->cal_data;
+	struct cs_dsp *dsp = &cs35l41->dsp.cs_dsp;
+	const u32 vals[] = {
+		(u32)cal->calAmbient, cal->calR, cal->calStatus,
+		cal->calR + cal->calStatus,
+	};
+	struct cs_dsp_coeff_ctl *ctl;
+	__be32 beval;
+	int i, ret;
+
+	lockdep_assert_held(&dsp->pwr_lock);
+
+	for (i = 0; i < ARRAY_SIZE(vals); i++) {
+		ctl = cs_dsp_get_ctl(dsp, cs35l41_cal_ctl_names[i], WMFW_ADSP2_XM,
+				     CS35L41_CAL_ALG_ID);
+		if (!ctl) {
+			dev_warn(cs35l41->dev, "Firmware has no %s control\n",
+				 cs35l41_cal_ctl_names[i]);
+			return -ENOENT;
+		}
+
+		if (ctl->flags & WMFW_CTL_FLAG_VOLATILE) {
+			ret = cs_dsp_write_data_word(dsp, ctl->alg_region.type,
+						     ctl->alg_region.base + ctl->offset,
+						     vals[i]);
+		} else {
+			beval = cpu_to_be32(vals[i]);
+			ret = cs_dsp_coeff_write_ctrl(ctl, 0, &beval, sizeof(beval));
+		}
+		if (ret < 0) {
+			dev_err(cs35l41->dev, "Failed to write %s: %d\n",
+				cs35l41_cal_ctl_names[i], ret);
+			return ret;
+		}
+	}
+
+	dev_info(cs35l41->dev, "Calibration applied: R0=%u ambient=%d status=%u\n",
+		 cal->calR, cal->calAmbient, cal->calStatus);
+
+	return 0;
+}
+
+static int cs35l41_dsp_pre_run(struct wm_adsp *dsp)
+{
+	struct cs35l41_private *cs35l41 = container_of(dsp, struct cs35l41_private, dsp);
+
+	if (cs35l41->cal_data_valid)
+		cs35l41_write_cal_data(cs35l41);
+
+	return 0;
+}
+
+static int cs35l41_cal_data_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct cs35l41_private *cs35l41 = snd_soc_component_get_drvdata(component);
+
+	guard(mutex)(&cs35l41->dsp.cs_dsp.pwr_lock);
+
+	memcpy(ucontrol->value.bytes.data, &cs35l41->cal_data, sizeof(cs35l41->cal_data));
+
+	return 0;
+}
+
+static int cs35l41_cal_data_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct cs35l41_private *cs35l41 = snd_soc_component_get_drvdata(component);
+	struct cs_dsp *dsp = &cs35l41->dsp.cs_dsp;
+	struct cirrus_amp_cal_data cal;
+	int ret;
+
+	memcpy(&cal, ucontrol->value.bytes.data, sizeof(cal));
+
+	if (cal.calR && cal.calStatus != CS35L41_CAL_STATUS_OK)
+		return -EINVAL;
+
+	guard(mutex)(&dsp->pwr_lock);
+
+	if (!memcmp(&cs35l41->cal_data, &cal, sizeof(cal)))
+		return 0;
+
+	cs35l41->cal_data = cal;
+	cs35l41->cal_data_valid = cal.calR != 0;
+
+	if (cs35l41->cal_data_valid && dsp->running && !dsp->hibernating) {
+		ret = cs35l41_write_cal_data(cs35l41);
+		if (ret)
+			return ret;
+	}
+
+	return 1;
+}
+
 static int cs35l41_dsp_preload_ev(struct snd_soc_dapm_widget *w,
 				  struct snd_kcontrol *kcontrol, int event)
 {
@@ -356,6 +459,8 @@ static const struct snd_kcontrol_new cs35l41_aud_controls[] = {
 		   CS35L41_AMP_GAIN_ZC_SHIFT, 1, 0),
 	WM_ADSP2_PRELOAD_SWITCH("DSP1", 1),
 	WM_ADSP_FW_CONTROL("DSP1", 0),
+	SND_SOC_BYTES_EXT("CAL_DATA", sizeof(struct cirrus_amp_cal_data),
+			  cs35l41_cal_data_get, cs35l41_cal_data_put),
 };
 
 static void cs35l41_boost_enable(struct cs35l41_private *cs35l41, unsigned int enable)
@@ -1091,6 +1196,7 @@ static int cs35l41_dsp_init(struct cs35l41_private *cs35l41)
 	dsp->part = "cs35l41";
 	dsp->fw = 9; /* 9 is WM_ADSP_FW_SPK_PROT in wm_adsp.c */
 	dsp->toggle_preload = true;
+	dsp->pre_run = cs35l41_dsp_pre_run;
 
 	cs35l41_configure_cs_dsp(cs35l41->dev, cs35l41->regmap, &dsp->cs_dsp);
 
@@ -1498,3 +1604,4 @@ EXPORT_GPL_DEV_PM_OPS(cs35l41_pm_ops) = {
 MODULE_DESCRIPTION("ASoC CS35L41 driver");
 MODULE_AUTHOR("David Rhodes, Cirrus Logic Inc, <david.rhodes@cirrus.com>");
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS("FW_CS_DSP");
