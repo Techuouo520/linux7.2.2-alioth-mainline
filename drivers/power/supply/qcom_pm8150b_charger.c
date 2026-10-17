@@ -254,6 +254,9 @@
 #define SDP_CURRENT_UA			500000
 #define CDP_CURRENT_UA			1500000
 #define DCP_CURRENT_UA			2000000
+
+/* APSD never completes behind a USB PD contract, stop rerunning it after this */
+#define SMB5_APSD_MAX_RERUNS		5
 #define CURRENT_MAX_UA			2000000
 
 /* pmi8150b registers represent current in increments of 1/40th of an amp */
@@ -285,6 +288,7 @@ struct smb5_register {
  * @regmap:		Register map
  * @batt_info:		Battery data from DT
  * @status_change_work: Worker to handle plug/unplug events
+ * @apsd_reruns:	APSD reruns since the last plugin
  * @cable_irq:		USB plugin IRQ
  * @wakeup_enabled:	If the cable IRQ will cause a wakeup
  * @usb_in_i_chan:	USB_IN current measurement channel
@@ -299,6 +303,7 @@ struct smb5_chip {
 	struct power_supply_battery_info *batt_info;
 
 	struct delayed_work status_change_work;
+	unsigned int apsd_reruns;
 	int cable_irq;
 	bool wakeup_enabled;
 
@@ -357,7 +362,7 @@ static int smb5_apsd_get_charger_type(struct smb5_chip *chip, int *val)
 		return rc;
 	}
 	if (!(apsd_stat & APSD_DTC_STATUS_DONE_BIT)) {
-		dev_err(chip->dev, "Apsd not ready");
+		dev_dbg(chip->dev, "Apsd not ready");
 		return -EAGAIN;
 	}
 
@@ -488,13 +493,19 @@ static void smb5_status_change_work(struct work_struct *work)
 		return;
 	}
 
-	if (rc < 0) {
+	if (rc < 0 && chip->apsd_reruns < SMB5_APSD_MAX_RERUNS) {
+		chip->apsd_reruns++;
 		rc = regmap_update_bits(chip->regmap, chip->base + CMD_APSD,
 					APSD_RERUN_BIT, APSD_RERUN_BIT);
 		schedule_delayed_work(&chip->status_change_work,
 				      msecs_to_jiffies(1000));
 		dev_dbg(chip->dev, "get charger type failed, rerun apsd\n");
 		return;
+	}
+
+	if (rc < 0) {
+		dev_info(chip->dev, "APSD did not complete, using default input current\n");
+		charger_type = POWER_SUPPLY_USB_TYPE_UNKNOWN;
 	}
 
 	switch (charger_type) {
@@ -577,6 +588,7 @@ static int smb5_get_property(struct power_supply *psy,
 			     union power_supply_propval *val)
 {
 	struct smb5_chip *chip = power_supply_get_drvdata(psy);
+	int rc;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_MANUFACTURER:
@@ -600,7 +612,12 @@ static int smb5_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_HEALTH:
 		return smb5_get_prop_health(chip, &val->intval);
 	case POWER_SUPPLY_PROP_USB_TYPE:
-		return smb5_apsd_get_charger_type(chip, &val->intval);
+		rc = smb5_apsd_get_charger_type(chip, &val->intval);
+		if (rc == -EAGAIN) {
+			val->intval = POWER_SUPPLY_USB_TYPE_UNKNOWN;
+			return 0;
+		}
+		return rc;
 	default:
 		dev_err(chip->dev, "invalid property: %d\n", psp);
 		return -EINVAL;
@@ -656,6 +673,7 @@ static irqreturn_t smb5_handle_usb_plugin(int irq, void *data)
 
 	power_supply_changed(chip->chg_psy);
 
+	chip->apsd_reruns = 0;
 	schedule_delayed_work(&chip->status_change_work,
 			      msecs_to_jiffies(1500));
 
