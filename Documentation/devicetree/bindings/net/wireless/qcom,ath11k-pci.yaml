@@ -22,10 +22,6 @@ properties:
   reg:
     maxItems: 1
 
-  local-mac-address: true
-
-  mac-address: true
-
   qcom,calibration-variant:
     $ref: /schemas/types.yaml#/definitions/string
     description: |
