@@ -940,6 +940,9 @@
 		compatible = "pci17cb,1101";
 		reg = <0x10000 0x0 0x0 0x0 0x0>;
 
+		/* Filled in when boot.img is built, firmware MAC is random */
+		local-mac-address = [00 00 00 00 00 00];
+
 		vddrfacmn-supply = <&vreg_pmu_rfa_cmn>;
 		vddaon-supply = <&vreg_pmu_aon_0p59>;
 		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;

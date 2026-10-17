@@ -22,6 +22,10 @@ set(ALIOTH_BOOT_HEADER_VERSION 2 CACHE STRING "Android boot image header version
 set(ALIOTH_BOOT_PAGESIZE 4096 CACHE STRING "Android boot image page size")
 set(ALIOTH_FLASH_DIR "/mnt/e/Android/k40-linux" CACHE PATH "Windows-visible directory receiving boot.img for fastboot")
 set(ALIOTH_CMDLINE "root=PARTLABEL=userdata rootwait rw console=tty0 loglevel=7" CACHE STRING "Kernel command line embedded in boot.img")
+set(ALIOTH_WIFI_MAC "02:00:db:b9:13:72" CACHE STRING "Wi-Fi MAC written to the boot.img DTB, 02:00 + androidboot.serialno; empty keeps firmware MAC")
+set(ALIOTH_WIFI_NODE "/soc@0/pcie@1c00000/pcie@0/wifi@0" CACHE STRING "DT path of the QCA6390 node")
+set(BOOT_DTB "${BOOT_OUTPUT_DIR}/sm8250-xiaomi-alioth.dtb")
+string(REPLACE ":" ";" ALIOTH_WIFI_MAC_BYTES "${ALIOTH_WIFI_MAC}")
 
 file(MAKE_DIRECTORY "${KERNEL_BUILD_DIR}")
 
@@ -54,12 +58,23 @@ add_custom_target(rootfs
     VERBATIM
 )
 
+if(ALIOTH_WIFI_MAC)
+    list(LENGTH ALIOTH_WIFI_MAC_BYTES ALIOTH_WIFI_MAC_LEN)
+    if(NOT ALIOTH_WIFI_MAC_LEN EQUAL 6)
+        message(FATAL_ERROR "ALIOTH_WIFI_MAC must be xx:xx:xx:xx:xx:xx, got ${ALIOTH_WIFI_MAC}")
+    endif()
+    find_program(FDTPUT_EXECUTABLE fdtput REQUIRED)
+    set(BOOT_DTB_FIXUP COMMAND "${FDTPUT_EXECUTABLE}" -t bx "${BOOT_DTB}" "${ALIOTH_WIFI_NODE}" local-mac-address ${ALIOTH_WIFI_MAC_BYTES})
+endif()
+
 if(MKBOOTIMG_EXECUTABLE)
     add_custom_target(bootimg
-        COMMAND "${MKBOOTIMG_EXECUTABLE}" --header_version ${ALIOTH_BOOT_HEADER_VERSION} --pagesize ${ALIOTH_BOOT_PAGESIZE} --base 0x00000000 --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 --tags_offset 0x00000100 --dtb_offset 0x01f00000 --os_version 11.0.0 --os_patch_level 2021-12 --kernel "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" --ramdisk "${BOOT_OUTPUT_DIR}/initrd.img" --dtb "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8250-xiaomi-alioth.dtb" --cmdline "${ALIOTH_CMDLINE}" -o "${BOOT_OUTPUT_DIR}/boot.img"
+        COMMAND "${CMAKE_COMMAND}" -E copy "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8250-xiaomi-alioth.dtb" "${BOOT_DTB}"
+        ${BOOT_DTB_FIXUP}
+        COMMAND "${MKBOOTIMG_EXECUTABLE}" --header_version ${ALIOTH_BOOT_HEADER_VERSION} --pagesize ${ALIOTH_BOOT_PAGESIZE} --base 0x00000000 --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 --tags_offset 0x00000100 --dtb_offset 0x01f00000 --os_version 11.0.0 --os_patch_level 2021-12 --kernel "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" --ramdisk "${BOOT_OUTPUT_DIR}/initrd.img" --dtb "${BOOT_DTB}" --cmdline "${ALIOTH_CMDLINE}" -o "${BOOT_OUTPUT_DIR}/boot.img"
         COMMAND "${CMAKE_COMMAND}" -E copy "${BOOT_OUTPUT_DIR}/boot.img" "${ALIOTH_FLASH_DIR}/boot.img"
         DEPENDS kernel
-        BYPRODUCTS "${BOOT_OUTPUT_DIR}/boot.img"
+        BYPRODUCTS "${BOOT_OUTPUT_DIR}/boot.img" "${BOOT_DTB}"
         USES_TERMINAL
         VERBATIM
     )
