@@ -4,37 +4,48 @@
 
 适用于 Redmi K40 / POCO F3（alioth）的 Linux 7.2.2 主线内核移植。
 
-## 编译
+启动链：原厂 ABL → Android boot.img（header v2：Image.gz + DTB + initramfs）→ userdata 分区上的 Ubuntu 26.04 rootfs → systemd → GNOME。
 
-安装依赖：
+## 依赖
 
 ```bash
-sudo apt install bc bison clang cmake device-tree-compiler dwarves flex libelf-dev libssl-dev lld llvm make
+sudo apt install bc bison clang cmake device-tree-compiler dwarves flex libelf-dev libssl-dev lld llvm make mkbootimg android-sdk-libsparse-utils qemu-user qemu-user-binfmt
 ```
 
-克隆仓库：
+## 编译
 
 ```bash
 git clone https://github.com/Techuouo520/linux7.2.2-alioth-mainline.git
 cd linux7.2.2-alioth-mainline
+cmake -S . -B build
+cmake --build build --target kernel
 ```
 
-编译：
+| 目标 | 作用 | 产物 |
+| --- | --- | --- |
+| `kernel` | 编译 Image.gz、模块、DTB | `build/kernel/arch/arm64/boot/` |
+| `modules` | 安装模块到暂存目录 | `build/modules/lib/modules/7.2.2-alioth` |
+| `rootfs` | 构建/刷新 Ubuntu rootfs 与 initramfs（需要 sudo） | `build/rootfs.simg`、`build/boot/initrd.img` |
+| `bootimg` | 打包 boot.img | `build/boot/boot.img` |
+
+rootfs 配置见 `alioth/rootfs.conf`（底包路径、固件路径、用户名与初始密码、软件包）。首次构建 `rootfs` 会完整安装系统，之后只刷新模块并重建 initramfs。
+
+## 刷入
+
+写入 userdata 会清空安卓数据。先写 rootfs，再用 `fastboot boot` 临时启动验证：
 
 ```bash
-mkdir build
-cd build
-cmake ..
-cmake --build .
+fastboot flash userdata build/rootfs.simg
 ```
 
-使用 `arch/arm64/configs/alioth_defconfig`。
+```bash
+fastboot boot build/boot/boot.img
+```
 
-编译产物：
+确认能启动后再固化 boot：
 
-```text
-build/kernel/arch/arm64/boot/Image
-build/kernel/arch/arm64/boot/dts/qcom/sm8250-xiaomi-alioth.dtb
+```bash
+fastboot flash boot_a build/boot/boot.img
 ```
 
 ## 许可证
