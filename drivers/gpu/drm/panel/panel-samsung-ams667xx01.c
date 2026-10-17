@@ -3,6 +3,7 @@
 
 #include <linux/backlight.h>
 #include <linux/delay.h>
+#include <linux/devm-helpers.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -24,6 +25,8 @@ struct ams667xx01 {
 	const struct panel_desc *desc;
 	struct regulator_bulk_data supplies[2];
 	struct gpio_desc *reset_gpio;
+	struct delayed_work bl_work;
+	bool bl_ready;
 };
 
 struct panel_desc {
@@ -325,6 +328,8 @@ static int ams667xx01_enable(struct drm_panel *panel)
 
 	msleep(28);
 
+	WRITE_ONCE(ctx->bl_ready, true);
+
 	return ret;
 }
 
@@ -334,7 +339,10 @@ static int ams667xx01_disable(struct drm_panel *panel)
 	struct mipi_dsi_device *dsi = ctx->dsi;
 	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
 
-    int ret;
+	int ret;
+
+	WRITE_ONCE(ctx->bl_ready, false);
+	cancel_delayed_work_sync(&ctx->bl_work);
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
 	if (ret < 0)
@@ -400,19 +408,27 @@ static const struct drm_panel_funcs ams667xx01_panel_funcs = {
 	.get_modes = ams667xx01_get_modes,
 };
 
-static int ams667xx01_bl_update_status(struct backlight_device *bl)
+static void ams667xx01_bl_work(struct work_struct *work)
 {
-	struct mipi_dsi_device *dsi = bl_get_data(bl);
-	u16 brightness = backlight_get_brightness(bl);
+	struct ams667xx01 *ctx = container_of(to_delayed_work(work), struct ams667xx01, bl_work);
+	u16 brightness = backlight_get_brightness(ctx->panel.backlight);
 	int ret;
 
-	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
+	if (!READ_ONCE(ctx->bl_ready))
+		return;
 
-	ret = mipi_dsi_dcs_set_display_brightness_large(dsi, brightness);
+	ret = mipi_dsi_dcs_set_display_brightness_large(ctx->dsi, brightness);
 	if (ret < 0)
-		return ret;
+		dev_err_ratelimited(&ctx->dsi->dev, "failed to set brightness: %d\n", ret);
+}
 
-	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
+static int ams667xx01_bl_update_status(struct backlight_device *bl)
+{
+	struct ams667xx01 *ctx = bl_get_data(bl);
+
+	/* Coalesce brightness bursts (GNOME fades) into one LP DCS write per 32 ms */
+	if (!delayed_work_pending(&ctx->bl_work))
+		schedule_delayed_work(&ctx->bl_work, msecs_to_jiffies(32));
 
 	return 0;
 }
@@ -422,16 +438,16 @@ static const struct backlight_ops ams667xx01_bl_ops = {
 };
 
 static struct backlight_device *
-ams667xx01_create_backlight(struct mipi_dsi_device *dsi)
+ams667xx01_create_backlight(struct ams667xx01 *ctx)
 {
-	struct device *dev = &dsi->dev;
+	struct device *dev = &ctx->dsi->dev;
 	const struct backlight_properties props = {
 		.type = BACKLIGHT_RAW,
 		.brightness = 1023,
 		.max_brightness = 2047,
 	};
 
-	return devm_backlight_device_register(dev, dev_name(dev), dev, dsi,
+	return devm_backlight_device_register(dev, dev_name(dev), dev, ctx,
 						  &ams667xx01_bl_ops, &props);
 }
 
@@ -468,7 +484,11 @@ static int ams667xx01_probe(struct mipi_dsi_device *dsi)
 
 	ctx->panel.prepare_prev_first = true;
 
-	ctx->panel.backlight = ams667xx01_create_backlight(dsi);
+	ret = devm_delayed_work_autocancel(dev, &ctx->bl_work, ams667xx01_bl_work);
+	if (ret)
+		return ret;
+
+	ctx->panel.backlight = ams667xx01_create_backlight(ctx);
 	if (IS_ERR(ctx->panel.backlight))
 		return dev_err_probe(dev, PTR_ERR(ctx->panel.backlight),
 					 "Failed to create backlight\n");
