@@ -147,6 +147,8 @@ struct msm_dsi_host {
 	spinlock_t intr_lock; /* Protect interrupt ctrl register */
 
 	u32 err_work_state;
+	u32 err_timeout_status;
+	u32 err_fifo_status;
 	struct work_struct err_work;
 	struct workqueue_struct *workqueue;
 
@@ -1568,12 +1570,14 @@ static void dsi_err_worker(struct work_struct *work)
 		container_of(work, struct msm_dsi_host, err_work);
 	u32 status = msm_host->err_work_state;
 
-	pr_err_ratelimited("%s: status=%x\n", __func__, status);
+	pr_err_ratelimited("%s: status=%x timeout=%08x fifo=%08x\n", __func__, status, msm_host->err_timeout_status, msm_host->err_fifo_status);
 	if (status & DSI_ERR_STATE_MDP_FIFO_UNDERFLOW)
 		dsi_sw_reset(msm_host);
 
 	/* It is safe to clear here because error irq is disabled. */
 	msm_host->err_work_state = 0;
+	msm_host->err_timeout_status = 0;
+	msm_host->err_fifo_status = 0;
 
 	/* enable dsi error interrupt */
 	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_ERROR, 1);
@@ -1601,6 +1605,7 @@ static void dsi_timeout_status(struct msm_dsi_host *msm_host)
 
 	if (status) {
 		dsi_write(msm_host, REG_DSI_TIMEOUT_STATUS, status);
+		msm_host->err_timeout_status |= status;
 		msm_host->err_work_state |= DSI_ERR_STATE_TIMEOUT;
 	}
 }
@@ -1630,6 +1635,7 @@ static void dsi_fifo_status(struct msm_dsi_host *msm_host)
 	/* fifo underflow, overflow */
 	if (status) {
 		dsi_write(msm_host, REG_DSI_FIFO_STATUS, status);
+		msm_host->err_fifo_status |= status;
 		msm_host->err_work_state |= DSI_ERR_STATE_FIFO;
 		if (status & DSI_FIFO_STATUS_CMD_MDP_FIFO_UNDERFLOW)
 			msm_host->err_work_state |=
