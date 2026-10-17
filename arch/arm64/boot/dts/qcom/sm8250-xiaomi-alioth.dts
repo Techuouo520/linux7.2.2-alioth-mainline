@@ -672,11 +672,46 @@
 };
 
 &gpu {
+	/* GPU DDR votes, otherwise DDR only follows the CPU votes */
+	interconnects = <&gem_noc MASTER_GRAPHICS_3D 0 &mc_virt SLAVE_EBI_CH0 0>;
+	interconnect-names = "gfx-mem";
+
 	status = "okay";
 
 	zap-shader {
 		memory-region = <&gpu_mem>;
 		firmware-name = "qcom/sm8250/xiaomi/alioth/a650_zap.mbn";
+	};
+};
+
+/* LPDDR5 bandwidth per GPU OPP from the stock kona v2.1 grp3d bus table (speed bin 1) */
+&gpu_opp_table {
+	opp-670000000 {
+		opp-peak-kBps = <10687500>;
+	};
+
+	opp-587000000 {
+		opp-peak-kBps = <10687500>;
+	};
+
+	opp-525000000 {
+		opp-peak-kBps = <6074218>;
+	};
+
+	opp-490000000 {
+		opp-peak-kBps = <6074218>;
+	};
+
+	opp-441600000 {
+		opp-peak-kBps = <6074218>;
+	};
+
+	opp-400000000 {
+		opp-peak-kBps = <6074218>;
+	};
+
+	opp-305000000 {
+		opp-peak-kBps = <1761718>;
 	};
 };
 
