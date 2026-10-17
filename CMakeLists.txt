@@ -21,7 +21,7 @@ set(KERNEL_MAKE "${MAKE_EXECUTABLE}" --no-silent -C "${KERNEL_SOURCE_DIR}" O=${K
 set(ALIOTH_BOOT_HEADER_VERSION 2 CACHE STRING "Android boot image header version accepted by alioth ABL")
 set(ALIOTH_BOOT_PAGESIZE 4096 CACHE STRING "Android boot image page size")
 set(ALIOTH_FLASH_DIR "/mnt/e/Android/k40-linux" CACHE PATH "Windows-visible directory receiving boot.img for fastboot")
-set(ALIOTH_CMDLINE "root=PARTLABEL=userdata rootwait rw console=tty0 loglevel=7" CACHE STRING "Kernel command line embedded in boot.img")
+set(ALIOTH_CMDLINE "root=PARTLABEL=userdata rootwait rw console=tty0 loglevel=7 fw_devlink.sync_state=timeout" CACHE STRING "Kernel command line embedded in boot.img")
 
 file(MAKE_DIRECTORY "${KERNEL_BUILD_DIR}")
 
