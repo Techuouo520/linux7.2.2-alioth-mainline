@@ -251,8 +251,8 @@ static const struct panel_desc alioth_desc = {
 	.bpc = 8,
 	.lanes = 4,
 	.format = MIPI_DSI_FMT_RGB888,
-	.mode_flags = MIPI_DSI_MODE_VIDEO_BURST | MIPI_DSI_CLOCK_NON_CONTINUOUS |
-				MIPI_DSI_MODE_LPM,
+	/* Command mode like vendor dsc_cmd so DCS writes wait for frame end */
+	.mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_LPM,
 	.init_sequence = alioth_init_sequence,
 	.dsc = &alioth_dsc_config,
 };
