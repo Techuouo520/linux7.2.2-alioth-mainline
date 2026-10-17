@@ -20,6 +20,7 @@ set(KERNEL_MAKE "${MAKE_EXECUTABLE}" --no-silent -C "${KERNEL_SOURCE_DIR}" O=${K
 
 set(ALIOTH_BOOT_HEADER_VERSION 2 CACHE STRING "Android boot image header version accepted by alioth ABL")
 set(ALIOTH_BOOT_PAGESIZE 4096 CACHE STRING "Android boot image page size")
+set(ALIOTH_FLASH_DIR "/mnt/e/Android/k40-linux" CACHE PATH "Windows-visible directory receiving boot.img for fastboot")
 set(ALIOTH_CMDLINE "root=PARTLABEL=userdata rootwait rw console=tty0 loglevel=7" CACHE STRING "Kernel command line embedded in boot.img")
 
 file(MAKE_DIRECTORY "${KERNEL_BUILD_DIR}")
@@ -56,6 +57,7 @@ add_custom_target(rootfs
 if(MKBOOTIMG_EXECUTABLE)
     add_custom_target(bootimg
         COMMAND "${MKBOOTIMG_EXECUTABLE}" --header_version ${ALIOTH_BOOT_HEADER_VERSION} --pagesize ${ALIOTH_BOOT_PAGESIZE} --base 0x00000000 --kernel_offset 0x00008000 --ramdisk_offset 0x01000000 --tags_offset 0x00000100 --dtb_offset 0x01f00000 --os_version 11.0.0 --os_patch_level 2021-12 --kernel "${KERNEL_BUILD_DIR}/arch/arm64/boot/Image.gz" --ramdisk "${BOOT_OUTPUT_DIR}/initrd.img" --dtb "${KERNEL_BUILD_DIR}/arch/arm64/boot/dts/qcom/sm8250-xiaomi-alioth.dtb" --cmdline "${ALIOTH_CMDLINE}" -o "${BOOT_OUTPUT_DIR}/boot.img"
+        COMMAND "${CMAKE_COMMAND}" -E copy "${BOOT_OUTPUT_DIR}/boot.img" "${ALIOTH_FLASH_DIR}/boot.img"
         DEPENDS kernel
         BYPRODUCTS "${BOOT_OUTPUT_DIR}/boot.img"
         USES_TERMINAL
