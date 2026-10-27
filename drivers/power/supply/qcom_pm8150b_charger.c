@@ -469,6 +469,7 @@ static int smb5_set_current_limit(struct smb5_chip *chip, unsigned int val)
 
 static void smb5_status_change_work(struct work_struct *work)
 {
+	union power_supply_propval supplier;
 	unsigned int charger_type, current_ua;
 	int usb_online = 0;
 	int count, rc;
@@ -504,7 +505,10 @@ static void smb5_status_change_work(struct work_struct *work)
 	}
 
 	if (rc < 0) {
-		dev_info(chip->dev, "APSD did not complete, using default input current\n");
+		if (chip->apsd_reruns == SMB5_APSD_MAX_RERUNS) {
+			dev_info(chip->dev, "APSD did not complete, using the Type-C/PD current\n");
+			chip->apsd_reruns++;
+		}
 		charger_type = POWER_SUPPLY_USB_TYPE_UNKNOWN;
 	}
 
@@ -520,6 +524,14 @@ static void smb5_status_change_work(struct work_struct *work)
 		current_ua = SDP_CURRENT_UA;
 		break;
 	}
+
+	/* APSD never completes behind a Type-C/PD source, use the current it advertises */
+	if (charger_type == POWER_SUPPLY_USB_TYPE_UNKNOWN &&
+	    !power_supply_get_property_from_supplier(chip->chg_psy,
+						      POWER_SUPPLY_PROP_CURRENT_MAX,
+						      &supplier) &&
+	    supplier.intval > 0)
+		current_ua = min_t(int, supplier.intval, CURRENT_MAX_UA);
 
 	smb5_set_current_limit(chip, current_ua);
 	power_supply_changed(chip->chg_psy);
@@ -650,6 +662,14 @@ static int smb5_property_is_writable(struct power_supply *psy,
 	}
 }
 
+/* A new Type-C/PD contract changes the input current we may draw */
+static void smb5_external_power_changed(struct power_supply *psy)
+{
+	struct smb5_chip *chip = power_supply_get_drvdata(psy);
+
+	mod_delayed_work(system_wq, &chip->status_change_work, 0);
+}
+
 static irqreturn_t smb5_handle_batt_overvoltage(int irq, void *data)
 {
 	struct smb5_chip *chip = data;
@@ -716,6 +736,7 @@ static const struct power_supply_desc smb5_psy_desc = {
 	.get_property = smb5_get_property,
 	.set_property = smb5_set_property,
 	.property_is_writeable = smb5_property_is_writable,
+	.external_power_changed = smb5_external_power_changed,
 };
 
 /* Init sequence derived from vendor downstream driver */
