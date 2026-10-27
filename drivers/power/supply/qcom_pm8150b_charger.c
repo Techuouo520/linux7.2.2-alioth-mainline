@@ -667,7 +667,7 @@ static void smb5_external_power_changed(struct power_supply *psy)
 {
 	struct smb5_chip *chip = power_supply_get_drvdata(psy);
 
-	mod_delayed_work(system_wq, &chip->status_change_work, 0);
+	mod_delayed_work(system_percpu_wq, &chip->status_change_work, 0);
 }
 
 static irqreturn_t smb5_handle_batt_overvoltage(int irq, void *data)
