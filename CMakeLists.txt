@@ -46,13 +46,15 @@ add_custom_target(modules
     VERBATIM
 )
 
-add_custom_target(rootfs
-    COMMAND "${KERNEL_SOURCE_DIR}/alioth/mkrootfs.sh" "${KERNEL_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}"
-    DEPENDS modules
-    BYPRODUCTS "${BOOT_OUTPUT_DIR}/initrd.img" "${CMAKE_CURRENT_BINARY_DIR}/rootfs.simg"
-    USES_TERMINAL
-    VERBATIM
-)
+if(EXISTS "${KERNEL_SOURCE_DIR}/alioth/mkrootfs.sh")
+    add_custom_target(rootfs
+        COMMAND "${KERNEL_SOURCE_DIR}/alioth/mkrootfs.sh" "${KERNEL_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}"
+        DEPENDS modules
+        BYPRODUCTS "${BOOT_OUTPUT_DIR}/initrd.img" "${CMAKE_CURRENT_BINARY_DIR}/rootfs.simg"
+        USES_TERMINAL
+        VERBATIM
+    )
+endif()
 
 if(MKBOOTIMG_EXECUTABLE)
     add_custom_target(bootimg

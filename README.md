@@ -25,10 +25,8 @@ cmake --build build --target kernel
 | --- | --- | --- |
 | `kernel` | 编译 Image.gz、模块、DTB | `build/kernel/arch/arm64/boot/` |
 | `modules` | 安装模块到暂存目录 | `build/modules/lib/modules/7.2.2-alioth` |
-| `rootfs` | 构建/刷新 Ubuntu rootfs 与 initramfs（需要 sudo） | `build/rootfs.simg`、`build/boot/initrd.img` |
+| `rootfs` | 构建/刷新 Ubuntu rootfs 与 initramfs（需要 sudo，依赖本地 alioth/ 脚本，不在仓库中） | `build/rootfs.simg`、`build/boot/initrd.img` |
 | `bootimg` | 打包 boot.img | `build/boot/boot.img` |
-
-rootfs 配置见 `alioth/rootfs.conf`（底包路径、固件路径、用户名与初始密码、软件包）。首次构建 `rootfs` 会完整安装系统，之后只刷新模块并重建 initramfs。
 
 ## 刷入
 

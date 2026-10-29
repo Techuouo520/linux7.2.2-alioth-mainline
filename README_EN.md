@@ -25,10 +25,8 @@ cmake --build build --target kernel
 | --- | --- | --- |
 | `kernel` | Build Image.gz, modules and DTB | `build/kernel/arch/arm64/boot/` |
 | `modules` | Install modules into a staging dir | `build/modules/lib/modules/7.2.2-alioth` |
-| `rootfs` | Build/refresh the Ubuntu rootfs and initramfs (needs sudo) | `build/rootfs.simg`, `build/boot/initrd.img` |
+| `rootfs` | Build/refresh the Ubuntu rootfs and initramfs (needs sudo and the local alioth/ scripts, not in the repo) | `build/rootfs.simg`, `build/boot/initrd.img` |
 | `bootimg` | Package boot.img | `build/boot/boot.img` |
-
-Rootfs settings live in `alioth/rootfs.conf` (base tarball, firmware path, user name and initial password, packages). The first `rootfs` build installs the full system; later runs only refresh modules and rebuild the initramfs.
 
 ## Flashing
 
